@@ -32,8 +32,13 @@ def create_yearly_registered(df):
   }, inplace=True)
   return yearly_registered
 
-def create_average_season(df):
-  avg_season = df.groupby("season", observed=True)["total_user_count"].mean().reset_index()
+def create_average_season(df, selected_seasons):
+  avg_season = (
+        df[df["season"].isin(selected_seasons)]
+        .groupby("season", observed=True)["total_user_count"]
+        .mean()
+        .reset_index()
+    )
   avg_season.rename(columns={
     "season":"Season",
     "total_user_count":"Average Users"
@@ -47,9 +52,18 @@ def create_average_season(df):
       ordered=True
   )
 
-  avg_season = avg_season.sort_values("Season")
+  return avg_season.sort_values("Season")
 
-  return avg_season
+def create_average_weather(df):
+  avg_weather = df.groupby("weather")["total_user_count"].mean().reset_index()
+
+  avg_weather = avg_weather.sort_values(
+    by="total_user_count",
+    ascending=False
+  )
+
+  return avg_weather
+   
 
 def create_daily_hour_avg(df):
   daily_hour_avg = df.groupby("hour")["total_user_count"].mean().reset_index()
@@ -68,11 +82,11 @@ df_hour = pd.read_csv('hour_clean.csv')
 with st.sidebar:
     st.header("Bike Sharing Analysis")
     st.write("Analisa Data penggunaan Bike Sharing Tahun 2011–2012.")
-    st.markdown("""
-    - [Pertumbuhan Penggunaan Bike Share](#pertumbuhan-penggunaan-bike-share)
-    - [Rata-Rata Rental per Musim dan Cuaca](#rata-rata-rental-per-musim-dan-cuaca)
-    - [Rata-Rata Rental per Jam dan Hari Kerja](#rata-rata-rental-per-jam-dan-hari-kerja)
-    """)
+    season = st.sidebar.multiselect(
+       "Seasons",
+       options=df_day['season'].unique(),
+       default=df_day['season'].unique()
+    )
 
 #Header
 st.title("Analisa Bike Sharing")
@@ -184,16 +198,22 @@ col1, col2 = st.columns(2)
 #Average Rent by Season
 with col1:
   st.subheader("Rata-rata Bike Share per Musim")
-  avg_season = create_average_season(df_day)
+  avg_season = create_average_season(df_day, season)
 
   fig, ax = plt.subplots(figsize=(8,4))
+
+  colors = [
+        "#72BCD4" if value == avg_season["Average Users"].max()
+        else "#8F8F8F"
+        for value in avg_season["Average Users"]
+  ]
 
   sns.barplot(
     data=avg_season,
     x="Season",
     y="Average Users",
     hue="Season",
-    palette = ["#8f8f8f", "#72BCD4", "#72BCD4", "#8f8f8f"],
+    palette = colors,
     errorbar=None,
     legend=False,
     ax=ax
@@ -207,21 +227,16 @@ with col1:
 #Average Rent by Weather
 with col2:
   st.subheader("Rata-rata Bike Share per Cuaca")
-  weather_avg = (
-      df_day
-      .groupby("weather")["total_user_count"]
-      .mean()
-      .reset_index()
-  )
+  weather_avg = create_average_weather(df_day)
 
   fig, ax = plt.subplots(figsize=(8, 4))
-
+  
   sns.barplot(
       data=weather_avg,
-      x="weather",
-      y="total_user_count",
-      color="#72BCD4",
-      errorbar=None,
+      x="total_user_count",
+      y="weather",
+      hue="weather",
+      palette = ["#72BCD4", "#8f8f8f", "#8f8f8f"],
       ax=ax
   )
   plt.title('Rata-rata Bike Share per Cuaca')
