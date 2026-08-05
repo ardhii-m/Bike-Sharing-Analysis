@@ -64,7 +64,6 @@ def create_average_weather(df):
   )
 
   return avg_weather
-   
 
 def create_daily_hour_avg(df):
   daily_hour_avg = df.groupby("hour")["total_user_count"].mean().reset_index()
@@ -79,10 +78,23 @@ df_day = pd.read_csv(os.path.join(os.path.dirname(__file__), "day_clean.csv"))
 df_day['date'] = pd.to_datetime(df_day['date'])
 df_hour = pd.read_csv(os.path.join(os.path.dirname(__file__), "hour_clean.csv"))
 
-
 with st.sidebar:
     st.header("Bike Sharing Analysis")
     st.write("Analisa Data penggunaan Bike Sharing Tahun 2011–2012.")
+    st.sidebar.header("Date")
+
+    start_date, end_date = st.date_input(
+    label="Rentang Waktu",
+      value=[df_day['date'].min(), df_day['date'].max()],
+      min_value=df_day['date'].min(),
+      max_value=df_day['date'].max()
+    )
+
+    main_df = df_day[(df_day["date"] >= str(start_date)) &
+                      (df_day["date"] <= str(end_date))]
+    main_hour_df = df_hour[(df_hour["date"] >= str(start_date)) &
+                      (df_hour["date"] <= str(end_date))]
+    
     season = st.sidebar.multiselect(
        "Seasons",
        options=df_day['season'].unique(),
@@ -99,7 +111,7 @@ tab1, tab2, tab3 = st.tabs(["Rata-rata User per Hari", "Total User per Tahun", "
 #Rata-rata User per Hari
 with tab1:
   st.subheader("Rata-rata Jumlah User per Hari")
-  daily_avg_users = create_daily_avg_users(df_day)
+  daily_avg_users = create_daily_avg_users(main_df)
 
   fig, ax = plt.subplots(figsize=(6,5))
 
@@ -128,7 +140,7 @@ with tab1:
 #Total user per tahun
 with tab2:
     st.subheader("Total Bike Share per Tahun")
-    yearly_usage = create_yearly_usage(df_day)
+    yearly_usage = create_yearly_usage(main_df)
 
     fig, ax = plt.subplots(figsize=(6,5))
 
@@ -161,7 +173,7 @@ with tab2:
 #Pertumbuhan user terdaftar
 with tab3:
   st.subheader("Growth Rate User Terdaftar per Tahun")
-  yearly_registered = create_yearly_registered(df_day)
+  yearly_registered = create_yearly_registered(main_df)
 
   fig, ax = plt.subplots(figsize=(6, 5))
 
@@ -199,7 +211,7 @@ col1, col2 = st.columns(2)
 #Average Rent by Season
 with col1:
   st.subheader("Rata-rata Bike Share per Musim")
-  avg_season = create_average_season(df_day, season)
+  avg_season = create_average_season(main_df, season)
 
   fig, ax = plt.subplots(figsize=(8,4))
   sns.barplot(
@@ -228,7 +240,7 @@ with col1:
 #Average Rent by Weather
 with col2:
   st.subheader("Rata-rata Bike Share per Cuaca")
-  weather_avg = create_average_weather(df_day)
+  weather_avg = create_average_weather(main_df)
 
   fig, ax = plt.subplots(figsize=(8, 4))
   
@@ -246,9 +258,10 @@ with col2:
   st.pyplot(fig)
 
 st.header("Rata-Rata Rental per Jam dan Hari Kerja")
+
 #Daily Hours Rent
 st.subheader("Rata-rata Rental per Jam")
-hour_avg = create_daily_hour_avg(df_hour)
+hour_avg = create_daily_hour_avg(main_hour_df)
 
 fig, ax = plt.subplots(figsize=(12,4))
 
@@ -269,7 +282,7 @@ st.pyplot(fig)
 #Average hours weekend vs workday
 st.subheader("Rental per Jam: Hari Kerja & Hari Libur")
 hour_work = (
-    df_hour
+    main_hour_df
     .groupby(["hour","workingday"])["total_user_count"]
     .mean()
     .reset_index()
@@ -278,7 +291,7 @@ hour_work = (
 fig, ax = plt.subplots(figsize=(12,4))
 
 sns.lineplot(
-  data=df_hour,
+  data=main_hour_df,
   x="hour",
   y="total_user_count",
   hue="workingday",
