@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -74,9 +75,9 @@ def create_daily_hour_avg(df):
   return daily_hour_avg
 
 #Import Dataset
-df_day = pd.read_csv('day_clean.csv')
+df_day = pd.read_csv(os.path.join(os.path.dirname(__file__), "day_clean.csv"))
 df_day['date'] = pd.to_datetime(df_day['date'])
-df_hour = pd.read_csv('hour_clean.csv')
+df_hour = pd.read_csv(os.path.join(os.path.dirname(__file__), "hour_clean.csv"))
 
 
 with st.sidebar:
@@ -201,23 +202,23 @@ with col1:
   avg_season = create_average_season(df_day, season)
 
   fig, ax = plt.subplots(figsize=(8,4))
-
-  colors = [
-        "#72BCD4" if value == avg_season["Average Users"].max()
-        else "#8F8F8F"
-        for value in avg_season["Average Users"]
-  ]
-
   sns.barplot(
     data=avg_season,
     x="Season",
     y="Average Users",
-    hue="Season",
     palette = colors,
     errorbar=None,
     legend=False,
     ax=ax
   )
+
+  max_idx = avg_season["Average Users"].idxmax()
+
+  for i, patch in enumerate(ax.patches):
+    if i == avg_season.index.get_loc(max_idx):
+        patch.set_facecolor("#72BCD4")
+    else:
+        patch.set_facecolor("#8F8F8F")
 
   plt.title("Rata-rata Bike Share per Musim", fontsize=16)
   plt.xlabel("")
