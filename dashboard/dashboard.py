@@ -7,8 +7,8 @@ import streamlit as st
 #create dataframe
 def create_daily_avg_users(df):
   daily_avg_users = df[['casual', 'registered', 'total_user_count']].mean().reset_index()
-  daily_avg_users.columns = ["Jenis User", "Rata-rata"]
-  daily_avg_users["Jenis User"] = daily_avg_users["Jenis User"].replace({
+  daily_avg_users.columns = ["User Type", "Average"]
+  daily_avg_users["User Type"] = daily_avg_users["User Type"].replace({
         "casual": "Non Members",
         "registered": "Members",
         "total_user_count": "Total Users"
@@ -80,11 +80,11 @@ df_hour = pd.read_csv(os.path.join(os.path.dirname(__file__), "hour_clean.csv"))
 
 with st.sidebar:
     st.header("Bike Sharing Analysis")
-    st.write("Analisa Data penggunaan Bike Sharing Tahun 2011–2012.")
+    st.write("Data analysis of Bike Sharing (2011–2012).")
     st.sidebar.header("Date")
 
     start_date, end_date = st.date_input(
-    label="Rentang Waktu",
+    label="Time Span",
       value=[df_day['date'].min(), df_day['date'].max()],
       min_value=df_day['date'].min(),
       max_value=df_day['date'].max()
@@ -102,15 +102,15 @@ with st.sidebar:
     )
 
 #Header
-st.title("Analisa Bike Sharing")
+st.title("Bike Share Analysis")
 
 #Visualize Total Rent by Year
-st.header("Pertumbuhan Penggunaan Bike Share")
-tab1, tab2, tab3 = st.tabs(["Rata-rata User per Hari", "Total User per Tahun", "Pertumbuhan User Terdaftar"])
+st.header("Growth in Bike Share Usage")
+tab1, tab2, tab3 = st.tabs(["Average Daily Users", "Total Annual Users", "Registered User Growth"])
 
-#Rata-rata User per Hari
+#Avg Daily Users
 with tab1:
-  st.subheader("Rata-rata Jumlah User per Hari")
+  st.subheader("Average Daily Users")
   daily_avg_users = create_daily_avg_users(main_df)
 
   fig, ax = plt.subplots(figsize=(6,5))
@@ -118,11 +118,11 @@ with tab1:
   colors = ["#72BCD4", "#9F9F9F", "#9F9F9F"]
 
   sns.barplot(
-      data=daily_avg_users.sort_values("Rata-rata", ascending=False),
-      x="Jenis User",
-      y="Rata-rata",
+      data=daily_avg_users.sort_values("Average", ascending=False),
+      x="User Type",
+      y="Average",
       palette=colors,
-      hue="Jenis User",
+      hue="User Type",
       legend=False,
       ax=ax
   )
@@ -132,14 +132,14 @@ with tab1:
         container,
         fmt="{:,.0f}",
     )
-  ax.set_title("Rata-rata Jumlah Bike Share per Hari untuk Setiap Jenis User")
+  ax.set_title("Average Number of Bike Share per Day by User Type")
   ax.set_xlabel("")
-  ax.set_ylabel("Rata-rata User")
+  ax.set_ylabel("Average Users")
   st.pyplot(fig)
 
-#Total user per tahun
+#Total Users per Year
 with tab2:
-    st.subheader("Total Bike Share per Tahun")
+    st.subheader("Total Annual Users")
     yearly_usage = create_yearly_usage(main_df)
 
     fig, ax = plt.subplots(figsize=(6,5))
@@ -164,15 +164,15 @@ with tab2:
       ax.bar_label(container, labels=yearly_usage["Total Users"].apply(lambda x: f"{x:,.0f}"), label_type='center', color='black', fontsize=12)
       ax.bar_label(container, labels=yearly_usage["Growth Rate"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else ""), label_type='edge', color='black', fontsize=12)
 
-    ax.set_title("Total Bike Share per Tahun")
+    ax.set_title("Total Annual Users")
     ax.set_xlabel("")
     ax.set_ylabel("")
 
     st.pyplot(fig)
 
-#Pertumbuhan user terdaftar
+#User Growth rate
 with tab3:
-  st.subheader("Growth Rate User Terdaftar per Tahun")
+  st.subheader("Registered User Growth")
   yearly_registered = create_yearly_registered(main_df)
 
   fig, ax = plt.subplots(figsize=(6, 5))
@@ -197,20 +197,20 @@ with tab3:
     ax.bar_label(container, labels=yearly_registered["Total Registered Users"].apply(lambda x: f"{x:,.0f}"), label_type='center', color='black', fontsize=12)
     ax.bar_label(container, labels=yearly_registered["Growth Rate"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else ""), label_type='edge', color='black', fontsize=12)
 
-  ax.set_title("Growth Rate User Terdaftar per Tahun")
+  ax.set_title("Registered User Growth")
   ax.set_xlabel("")
   ax.set_ylabel("")
 
   st.pyplot(fig)
 
 #Average Rent by Season & Weather
-st.header("Rata-Rata Rental per Musim dan Cuaca ")
+st.header("Average Rental Rates by Season and Weather")
 
 col1, col2 = st.columns(2)
 
 #Average Rent by Season
 with col1:
-  st.subheader("Rata-rata Bike Share per Musim")
+  st.subheader("Average Rent by Season")
   avg_season = create_average_season(main_df, season)
 
   fig, ax = plt.subplots(figsize=(8,4))
@@ -232,14 +232,14 @@ with col1:
     else:
         patch.set_facecolor("#8F8F8F")
 
-  plt.title("Rata-rata Bike Share per Musim", fontsize=16)
+  plt.title("Average Rent by Season", fontsize=16)
   plt.xlabel("")
   plt.ylabel("")
   st.pyplot(fig)
 
 #Average Rent by Weather
 with col2:
-  st.subheader("Rata-rata Bike Share per Cuaca")
+  st.subheader("Average Rent by Weather")
   weather_avg = create_average_weather(main_df)
 
   fig, ax = plt.subplots(figsize=(8, 4))
@@ -252,15 +252,15 @@ with col2:
       palette = ["#72BCD4", "#8f8f8f", "#8f8f8f"],
       ax=ax
   )
-  plt.title('Rata-rata Bike Share per Cuaca')
+  plt.title('Average Rent by Weather')
   plt.xlabel("")
   plt.ylabel("")
   st.pyplot(fig)
 
-st.header("Rata-Rata Rental per Jam dan Hari Kerja")
+st.header("Average Hourly and Workday Rental Rates")
 
 #Daily Hours Rent
-st.subheader("Rata-rata Rental per Jam")
+st.subheader("Average Hourly Rental Rate")
 hour_avg = create_daily_hour_avg(main_hour_df)
 
 fig, ax = plt.subplots(figsize=(12,4))
@@ -273,14 +273,14 @@ sns.barplot(
     ax=ax
 )
 
-plt.title("Rata-rata bike share per jam", fontsize=16)
+plt.title("Average hourly bike share usage", fontsize=16)
 plt.xlabel("")
-plt.ylabel("User")
+plt.ylabel("Users")
 st.pyplot(fig)
 
 
 #Average hours weekend vs workday
-st.subheader("Rental per Jam: Hari Kerja & Hari Libur")
+st.subheader("Hourly Rental: Workdays & Holidays")
 hour_work = (
     main_hour_df
     .groupby(["hour","workingday"])["total_user_count"]
@@ -300,7 +300,7 @@ sns.lineplot(
   marker="o"
 )
 
-plt.title("Rata-rata bike share per jam", fontsize=16)
+plt.title("Average hourly bike-share usage", fontsize=16)
 plt.xlabel("")
 plt.ylabel("User")
 plt.xticks(range(24))
