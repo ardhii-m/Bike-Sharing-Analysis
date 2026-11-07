@@ -2,5 +2,5 @@ numpy==2.2.6
 pandas==2.3.3
 matplotlib==3.10.8
 seaborn==0.13.2
-Babel==2.18.0
+plotly>=6.0
 streamlit==1.59.2
