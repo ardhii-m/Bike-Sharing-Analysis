@@ -1,307 +1,172 @@
-import os
+from pathlib import Path
+
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+import plotly.express as px
 import streamlit as st
 
-#create dataframe
-def create_daily_avg_users(df):
-  daily_avg_users = df[['casual', 'registered', 'total_user_count']].mean().reset_index()
-  daily_avg_users.columns = ["User Type", "Average"]
-  daily_avg_users["User Type"] = daily_avg_users["User Type"].replace({
-        "casual": "Non Members",
-        "registered": "Members",
-        "total_user_count": "Total Users"
-    })
-  return daily_avg_users
+st.set_page_config(page_title="Bike Sharing Dashboard", layout="wide")
 
-def create_yearly_usage(df):
-  yearly_usage = df.groupby('year')['total_user_count'].sum().reset_index()
-  yearly_usage["Growth Rate"] = (yearly_usage["total_user_count"].pct_change() * 100)
-  yearly_usage.rename(columns={
-    'year':'Year',
-    'total_user_count':'Total Users'
-  }, inplace=True)
-  return yearly_usage
+DATA_DIR = Path(__file__).parent
+BLUE, GREY = "#2E86AB", "#9AA5B1"
+SEASON_ORDER = ["Winter", "Spring", "Summer", "Fall"]
+DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+MONTH_ORDER = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
-def create_yearly_registered(df):
-  yearly_registered = df.groupby('year')['registered'].sum().reset_index()
-  yearly_registered['Growth Rate'] = (yearly_registered['registered'].pct_change() * 100)
-  yearly_registered.rename(columns={
-    'year':'Year',
-    'registered':'Total Registered Users'
-  }, inplace=True)
-  return yearly_registered
 
-def create_average_season(df, selected_seasons):
-  avg_season = (
-        df[df["season"].isin(selected_seasons)]
-        .groupby("season", observed=True)["total_user_count"]
-        .mean()
-        .reset_index()
-    )
-  avg_season.rename(columns={
-    "season":"Season",
-    "total_user_count":"Average Users"
-  }, inplace=True)
+# Data loading and caching
+@st.cache_data
+def load_data():
+    day = pd.read_csv(DATA_DIR / "day_clean.csv", parse_dates=["date"])
+    hour = pd.read_csv(DATA_DIR / "hour_clean.csv", parse_dates=["date"])
+    for df in (day, hour):
+        df["temp_c"] = df["temp"] * 41  # dataset stores temp normalised to max 41 C
+        df["day_type"] = df["workingday"].map({"Yes": "Working day", "No": "Weekend / holiday"})
+    return day, hour
 
-  season_order = ["Spring", "Summer", "Fall", "Winter"]
 
-  avg_season["Season"] = pd.Categorical(
-      avg_season["Season"],
-      categories=season_order,
-      ordered=True
-  )
+def pct(a, b):
+    return (a / b - 1) * 100 if b else float("nan")
 
-  return avg_season.sort_values("Season")
 
-def create_average_weather(df):
-  avg_weather = df.groupby("weather")["total_user_count"].mean().reset_index()
+day, hour = load_data()
 
-  avg_weather = avg_weather.sort_values(
-    by="total_user_count",
-    ascending=False
-  )
-
-  return avg_weather
-
-def create_daily_hour_avg(df):
-  daily_hour_avg = df.groupby("hour")["total_user_count"].mean().reset_index()
-  daily_hour_avg.rename(columns={
-    "hour":"Hour",
-    "total_user_count":"Average Users"
-  }, inplace=True)
-  return daily_hour_avg
-
-#Import Dataset
-df_day = pd.read_csv(os.path.join(os.path.dirname(__file__), "day_clean.csv"))
-df_day['date'] = pd.to_datetime(df_day['date'])
-df_hour = pd.read_csv(os.path.join(os.path.dirname(__file__), "hour_clean.csv"))
-
+# Sidebar filters
 with st.sidebar:
-    st.header("Bike Sharing Analysis")
-    st.write("Data analysis of Bike Sharing (2011–2012).")
-    st.sidebar.header("Date")
+    st.header("Filters")
+    picked = st.date_input("Date range", value=(day["date"].min(), day["date"].max()),
+                           min_value=day["date"].min(), max_value=day["date"].max())
+    if len(picked) != 2:
+        st.info("Pick an end date to apply the range.")
+        st.stop()
+    start, end = map(pd.Timestamp, picked)
+    seasons = st.multiselect("Season", SEASON_ORDER, default=SEASON_ORDER)
+    weathers = st.multiselect("Weather", sorted(day["weather"].unique()),
+                              default=sorted(day["weather"].unique()))
+    day_types = st.multiselect("Day type", ["Working day", "Weekend / holiday"],
+                               default=["Working day", "Weekend / holiday"])
+    st.caption("Dataset: Capital Bikeshare, Washington DC, 2011-2012 (UCI).")
 
-    start_date, end_date = st.date_input(
-    label="Time Span",
-      value=[df_day['date'].min(), df_day['date'].max()],
-      min_value=df_day['date'].min(),
-      max_value=df_day['date'].max()
-    )
 
-    main_df = df_day[(df_day["date"] >= str(start_date)) &
-                      (df_day["date"] <= str(end_date))]
-    main_hour_df = df_hour[(df_hour["date"] >= str(start_date)) &
-                      (df_hour["date"] <= str(end_date))]
-    
-    season = st.sidebar.multiselect(
-       "Seasons",
-       options=df_day['season'].unique(),
-       default=df_day['season'].unique()
-    )
+def apply(df):
+    return df[df["date"].between(start, end) & df["season"].isin(seasons)
+              & df["weather"].isin(weathers) & df["day_type"].isin(day_types)]
 
-#Header
-st.title("Bike Share Analysis")
 
-#Visualize Total Rent by Year
-st.header("Growth in Bike Share Usage")
-tab1, tab2, tab3 = st.tabs(["Average Daily Users", "Total Annual Users", "Registered User Growth"])
+day, hour = apply(day), apply(hour)
+if day.empty:
+    st.warning("No data for these filters. Widen the selection in the sidebar.")
+    st.stop()
 
-#Avg Daily Users
-with tab1:
-  st.subheader("Average Daily Users")
-  daily_avg_users = create_daily_avg_users(main_df)
+# Header & KPIs
+st.title("Bike Sharing Demand Dashboard")
+st.caption("When and why do people rent bikes? Use the filters to slice demand, then read the takeaway under each chart.")
 
-  fig, ax = plt.subplots(figsize=(6,5))
+by_year = day.groupby("year")["total_user_count"].sum()
+yoy = pct(by_year.get(2012, 0), by_year.get(2011, 0)) if {2011, 2012} <= set(by_year.index) else None
 
-  colors = ["#72BCD4", "#9F9F9F", "#9F9F9F"]
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("Total rentals", f"{day['total_user_count'].sum():,.0f}")
+k2.metric("Avg rentals / day", f"{day['total_user_count'].mean():,.0f}")
+k3.metric("Registered share", f"{day['registered'].sum() / day['total_user_count'].sum():.0%}")
+k4.metric("2012 vs 2011", f"{yoy:+.1f}%" if yoy is not None else "n/a",
+          help="Needs both years inside the selected date range.")
 
-  sns.barplot(
-      data=daily_avg_users.sort_values("Average", ascending=False),
-      x="User Type",
-      y="Average",
-      palette=colors,
-      hue="User Type",
-      legend=False,
-      ax=ax
-  )
+tab_trend, tab_env, tab_time, tab_reco = st.tabs(
+    ["📈 Trend", "🌦️ Season & Weather", "🕒 Time of Day", "💡 Recommendations"])
 
-  for container in ax.containers:
-    ax.bar_label(
-        container,
-        fmt="{:,.0f}",
-    )
-  ax.set_title("Average Number of Bike Share per Day by User Type")
-  ax.set_xlabel("")
-  ax.set_ylabel("Average Users")
-  st.pyplot(fig)
+# Trend
+with tab_trend:
+    monthly = (day.groupby(["year", "month"], as_index=False)["total_user_count"].sum()
+               .assign(month=lambda x: pd.Categorical(x["month"], MONTH_ORDER, ordered=True))
+               .sort_values(["year", "month"]))
+    monthly["year"] = monthly["year"].astype(str)
+    fig = px.line(monthly, x="month", y="total_user_count", color="year", markers=True,
+                  color_discrete_sequence=[GREY, BLUE],
+                  labels={"total_user_count": "Rentals", "month": "", "year": "Year"},
+                  title="Monthly rentals, 2011 vs 2012")
+    st.plotly_chart(fig, width="stretch")
 
-#Total Users per Year
-with tab2:
-    st.subheader("Total Annual Users")
-    yearly_usage = create_yearly_usage(main_df)
+    mix = day.groupby("year")[["casual", "registered"]].sum().reset_index().melt(
+        "year", var_name="User type", value_name="Rentals")
+    mix["year"] = mix["year"].astype(str)
+    fig = px.bar(mix, x="year", y="Rentals", color="User type", barmode="group",
+                 color_discrete_sequence=[GREY, BLUE],
+                 title="Casual vs registered rentals by year", labels={"year": ""})
+    st.plotly_chart(fig, width="stretch")
 
-    fig, ax = plt.subplots(figsize=(6,5))
+    peak = monthly.loc[monthly["total_user_count"].idxmax()]
+    st.info(f"**Takeaway:** demand peaks in **{peak['month']} {peak['year']}** "
+            f"({peak['total_user_count']:,.0f} rentals) and follows a clear seasonal curve "
+            "in both years.")
 
-    sns.barplot(
-        data=yearly_usage,
-        x="Year",
-        y="Total Users",
-        color="#9F9F9F",
-        errorbar=None,
-        ax=ax,
-    )
-
-    colors = [
-        "#72BCD4" if value == yearly_usage["Total Users"].max() else "#9F9F9F"
-        for value in yearly_usage["Total Users"]
-    ]
-    for patch, color in zip(ax.patches, colors):
-        patch.set_facecolor(color)
-
-    for container in ax.containers:
-      ax.bar_label(container, labels=yearly_usage["Total Users"].apply(lambda x: f"{x:,.0f}"), label_type='center', color='black', fontsize=12)
-      ax.bar_label(container, labels=yearly_usage["Growth Rate"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else ""), label_type='edge', color='black', fontsize=12)
-
-    ax.set_title("Total Annual Users")
-    ax.set_xlabel("")
-    ax.set_ylabel("")
-
-    st.pyplot(fig)
-
-#User Growth rate
-with tab3:
-  st.subheader("Registered User Growth")
-  yearly_registered = create_yearly_registered(main_df)
-
-  fig, ax = plt.subplots(figsize=(6, 5))
-
-  sns.barplot(
-      data=yearly_registered,
-      x="Year",
-      y="Total Registered Users",
-      color="#9F9F9F",
-      errorbar=None,
-      ax=ax,
-  )
-
-  colors = [
-      "#72BCD4" if value == yearly_registered["Total Registered Users"].max() else "#9F9F9F"
-      for value in yearly_registered["Total Registered Users"]
-  ]
-  for patch, color in zip(ax.patches, colors):
-      patch.set_facecolor(color)
-
-  for container in ax.containers:
-    ax.bar_label(container, labels=yearly_registered["Total Registered Users"].apply(lambda x: f"{x:,.0f}"), label_type='center', color='black', fontsize=12)
-    ax.bar_label(container, labels=yearly_registered["Growth Rate"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else ""), label_type='edge', color='black', fontsize=12)
-
-  ax.set_title("Registered User Growth")
-  ax.set_xlabel("")
-  ax.set_ylabel("")
-
-  st.pyplot(fig)
-
-#Average Rent by Season & Weather
-st.header("Average Rental Rates by Season and Weather")
-
-col1, col2 = st.columns(2)
-
-#Average Rent by Season
-with col1:
-  st.subheader("Average Rent by Season")
-  avg_season = create_average_season(main_df, season)
-
-  fig, ax = plt.subplots(figsize=(8,4))
-  sns.barplot(
-    data=avg_season,
-    x="Season",
-    y="Average Users",
-    palette = colors,
-    errorbar=None,
-    legend=False,
-    ax=ax
-  )
-
-  max_idx = avg_season["Average Users"].idxmax()
-
-  for i, patch in enumerate(ax.patches):
-    if i == avg_season.index.get_loc(max_idx):
-        patch.set_facecolor("#72BCD4")
+# Season and weather
+with tab_env:
+    c1, c2 = st.columns(2)
+    season_avg = (day.groupby("season", as_index=False)["total_user_count"].mean()
+                  .assign(season=lambda x: pd.Categorical(x["season"], SEASON_ORDER, ordered=True))
+                  .sort_values("season"))
+    top_season = season_avg.loc[season_avg["total_user_count"].idxmax(), "season"]
+    season_avg["hl"] = season_avg["season"].astype(str).eq(top_season).map({True: "Peak", False: "Other"})
+    fig = px.bar(season_avg, x="season", y="total_user_count", color="hl",
+                 color_discrete_map={"Peak": BLUE, "Other": GREY},
+                 labels={"total_user_count": "Avg rentals / day", "season": ""},
+                 title="Average daily rentals by season")
+    fig.update_layout(showlegend=False)
+    c1.plotly_chart(fig, width="stretch")
+    c1.info(f"**Takeaway:** **{top_season}** is the busiest season "
+            f"({season_avg['total_user_count'].max():,.0f} rentals/day on average).")
+ 
+    weather_avg = (day.groupby("weather", as_index=False)
+                   .agg(avg=("total_user_count", "mean"), days=("total_user_count", "size"))
+                   .sort_values("avg", ascending=False))
+    fig = px.bar(weather_avg, x="avg", y="weather", orientation="h", text="days",
+                 labels={"avg": "Avg rentals / day", "weather": ""},
+                 title="Average daily rentals by weather",
+                 color_discrete_sequence=[BLUE])
+    fig.update_traces(texttemplate="n=%{text} days", textposition="inside")
+    fig.update_layout(yaxis={"categoryorder": "total ascending"})
+    c2.plotly_chart(fig, width="stretch")
+ 
+    best, worst = weather_avg.iloc[0], weather_avg.iloc[-1]
+    if len(weather_avg) > 1:
+        gap = (1 - worst["avg"] / best["avg"]) * 100
+        msg = (f"**Takeaway:** **{best['weather']}** days average {best['avg']:,.0f} rentals, "
+               f"while **{worst['weather']}** days average {worst['avg']:,.0f} "
+               f"(about {gap:.0f}% lower).")
+        if worst["days"] < 30:
+            msg += f" Only {worst['days']} days fall in the lowest category, so treat the gap as indicative."
     else:
-        patch.set_facecolor("#8F8F8F")
-
-  plt.title("Average Rent by Season", fontsize=16)
-  plt.xlabel("")
-  plt.ylabel("")
-  st.pyplot(fig)
-
-#Average Rent by Weather
-with col2:
-  st.subheader("Average Rent by Weather")
-  weather_avg = create_average_weather(main_df)
-
-  fig, ax = plt.subplots(figsize=(8, 4))
-  
-  sns.barplot(
-      data=weather_avg,
-      x="total_user_count",
-      y="weather",
-      hue="weather",
-      palette = ["#72BCD4", "#8f8f8f", "#8f8f8f"],
-      ax=ax
-  )
-  plt.title('Average Rent by Weather')
-  plt.xlabel("")
-  plt.ylabel("")
-  st.pyplot(fig)
-
-st.header("Average Hourly and Workday Rental Rates")
-
-#Daily Hours Rent
-st.subheader("Average Hourly Rental Rate")
-hour_avg = create_daily_hour_avg(main_hour_df)
-
-fig, ax = plt.subplots(figsize=(12,4))
-
-sns.barplot(
-    data=hour_avg,
-    x="Hour",
-    y="Average Users",
-    errorbar=None,
-    ax=ax
-)
-
-plt.title("Average hourly bike share usage", fontsize=16)
-plt.xlabel("")
-plt.ylabel("Users")
-st.pyplot(fig)
+        msg = f"**Takeaway:** only **{best['weather']}** days are selected; widen the weather filter to compare."
+    c2.info(msg)
 
 
-#Average hours weekend vs workday
-st.subheader("Hourly Rental: Workdays & Holidays")
-hour_work = (
-    main_hour_df
-    .groupby(["hour","workingday"])["total_user_count"]
-    .mean()
-    .reset_index()
-)
+# Time of day
+with tab_time:
+    by_hour = hour.groupby(["hour", "day_type"], as_index=False)["total_user_count"].mean()
+    fig = px.line(by_hour, x="hour", y="total_user_count", color="day_type", markers=True,
+                  color_discrete_map={"Working day": BLUE, "Weekend / holiday": GREY},
+                  labels={"total_user_count": "Avg rentals / hour", "hour": "Hour of day",
+                          "day_type": ""},
+                  title="Average rentals by hour: working days vs weekends/holidays")
+    fig.update_xaxes(dtick=1)
+    st.plotly_chart(fig, width="stretch")
 
-fig, ax = plt.subplots(figsize=(12,4))
+    workday = hour[hour["day_type"] == "Working day"].groupby("hour")["total_user_count"].mean()
+    weekend = hour[hour["day_type"] != "Working day"].groupby("hour")["total_user_count"].mean()
+    msg = "**Takeaway:** "
+    if not workday.empty:
+        msg += (f"working days show commuter spikes at **{workday[workday.index < 12].idxmax()}:00** "
+                f"and **{workday[workday.index >= 12].idxmax()}:00**; ")
+    if not weekend.empty:
+        msg += f"weekends/holidays peak midday around **{weekend.idxmax()}:00**."
+    st.info(msg)
 
-sns.lineplot(
-  data=main_hour_df,
-  x="hour",
-  y="total_user_count",
-  hue="workingday",
-  palette = ["#8f8f8f", "#72BCD4"],
-  linewidth=2.5,
-  marker="o"
-)
-
-plt.title("Average hourly bike-share usage", fontsize=16)
-plt.xlabel("")
-plt.ylabel("User")
-plt.xticks(range(24))
-st.pyplot(fig)
+# Recommendations
+with tab_reco:
+    st.subheader("What the data suggests")
+    st.markdown(
+        "- **Rebalance Bikes by Time of Day:** On working days, stock commuter hubs before 8 AM and 5 PM. On weekends, move bikes toward leisure areas for the midday peak.\n"
+        "- **Weekend Promotions:** To increase Bike Share usage on weekends, consider offering special promotions such as weekend discounts or morning-specific promotions. These initiatives could help increase rental activity during the morning, similar to weekday patterns, while also encouraging a healthy lifestyle through morning cycling. \n"
+        "- **Plan Around Season and Weather:** Schedule maintenance and fleet reductions in spring, and run campaigns in summer and winter. Consider a rain-day discount or weather alert, since rainy days lose about 63% of demand.\n"
+    )
