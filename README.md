@@ -4,7 +4,7 @@ An end-to-end analysis of two years of Capital Bike share system, delivered as a
 
 **[Live dashboard](https://bike-sharing-ardhm.streamlit.app/)** · **[Analysis notebook](notebook.ipynb)**
 
-<!-- ![Dashboard preview](assets/dashboard-preview.gif) -->
+![Dashboard preview](assets/dashboard-preview.gif)
 
 ## Business Problem
 
