@@ -20,7 +20,6 @@ def load_data():
     day = pd.read_csv(DATA_DIR / "day_clean.csv", parse_dates=["date"])
     hour = pd.read_csv(DATA_DIR / "hour_clean.csv", parse_dates=["date"])
     for df in (day, hour):
-        df["temp_c"] = df["temp"] * 41  # dataset stores temp normalised to max 41 C
         df["day_type"] = df["workingday"].map({"Yes": "Working day", "No": "Weekend / holiday"})
     return day, hour
 
@@ -45,8 +44,6 @@ with st.sidebar:
                               default=sorted(day["weather"].unique()))
     day_types = st.multiselect("Day type", ["Working day", "Weekend / holiday"],
                                default=["Working day", "Weekend / holiday"])
-    st.caption("Dataset: Capital Bikeshare, Washington DC, 2011-2012 (UCI).")
-
 
 def apply(df):
     return df[df["date"].between(start, end) & df["season"].isin(seasons)
@@ -73,7 +70,7 @@ k4.metric("2012 vs 2011", f"{yoy:+.1f}%" if yoy is not None else "n/a",
           help="Needs both years inside the selected date range.")
 
 tab_trend, tab_env, tab_time, tab_reco = st.tabs(
-    ["📈 Trend", "🌦️ Season & Weather", "🕒 Time of Day", "💡 Recommendations"])
+    ["Trend", "Season & Weather", "Time of Day", "Recommendations"])
 
 # Trend
 with tab_trend:
